@@ -1,10 +1,17 @@
 package frc.robot;
 
+import static edu.wpi.first.units.Units.Inches;
+import static edu.wpi.first.units.Units.Meters;
+
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.photonvision.EstimatedRobotPose;
 import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
 import org.photonvision.simulation.PhotonCameraSim;
 import org.photonvision.simulation.SimCameraProperties;
 import org.photonvision.simulation.VisionSystemSim;
@@ -12,93 +19,156 @@ import org.photonvision.targeting.PhotonTrackedTarget;
 
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.math.numbers.N1;
+import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.networktables.DoubleArrayPublisher;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StringPublisher;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 public class Vision extends SubsystemBase {
-    private Supplier<Pose2d> robotPoseSupplier;
+    public static final Matrix<N3, N1> kSingleTagStdDevs = VecBuilder.fill(4, 4, 8);
+    public static final Matrix<N3, N1> kMultiTagStdDevs = VecBuilder.fill(0.5, 0.5, 1);
 
-    private static final AprilTagFieldLayout tagLayout =
-        AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+    public Field2d purevision = new Field2d();
 
-    // Front Camera
-    private PhotonCamera cameraf = new PhotonCamera("photonvisionf");
-    Translation3d robotToCamerafTrl = new Translation3d(1, 0, 1);
-    Rotation3d robotToCamerafRot = new Rotation3d(0, Math.toRadians(-15), 0);
-    Transform3d robotToCameraf = new Transform3d(robotToCamerafTrl, robotToCamerafRot);
+    private Matrix<N3, N1> curStdDevs;
+    private final EstimateConsumer estConsumer;
 
-    // Low Camera
-    private PhotonCamera cameral = new PhotonCamera("photonvisionl");
-    Translation3d robotToCameralTrl = new Translation3d(1, 0, 0);
-    Rotation3d robotToCameralRot = new Rotation3d(0, Math.toRadians(4), 0);
-    Transform3d robotToCameral = new Transform3d(robotToCameralTrl, robotToCameralRot);
+    @FunctionalInterface
+    public static interface EstimateConsumer {
+        public void accept(Pose2d pose, double timestamp, Matrix<N3, N1> estimationStdDevs);
+    }
 
-    // Simulation
-    private VisionSystemSim visionSim;
-        // Front Camera
-        SimCameraProperties camerafProp;
-        // Low Camera
-        SimCameraProperties cameralProp;
 
-    public Vision(boolean is_simulation, Supplier<Pose2d> robotPoseSupplier) {
-        this.robotPoseSupplier = robotPoseSupplier;
+
+    private AprilTagFieldLayout tagLayout;
+
+    public static final Transform3d robotToFrontRightCam =
+        new Transform3d(
+            new Translation3d(
+                Inches.of(12.040283+-0.673182).in(Meters), 
+                Inches.of(-10.040908+0.807295).in(Meters),
+                Inches.of(6.805750+2.396424).in(Meters)
+            ),
+            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(-65))
+            //new Rotation3d(0, Math.toRadians(0), Math.toRadians(5))
+        );
+
+    public PhotonPoseEstimator photonEstimatorFrontRight;
+    public PhotonCamera cameraFrontRight = new PhotonCamera("Right");
+
+    public Vision(boolean is_simulation, EstimateConsumer estConsumer) {
+        try {
+            tagLayout = new AprilTagFieldLayout("/home/lvuser/deploy/2026-rebuilt-welded.json");
+            System.out.println(tagLayout);
+            System.out.println(Filesystem.getDeployDirectory().toPath().toString()+"/2026-rebuilt-welded.json");
+            System.out.println(Filesystem.getDeployDirectory().toPath().toString());
+        } catch (IOException e) {
+            System.out.println(e);
+        }
+        photonEstimatorFrontRight = new PhotonPoseEstimator(
+            tagLayout,
+            robotToFrontRightCam);
+
+        this.estConsumer = estConsumer;
         if (is_simulation) {
-            visionSim = new VisionSystemSim("simtags");
-            visionSim.addAprilTags(tagLayout);  
-
-            // Front Camera
-            camerafProp = new SimCameraProperties();
-            camerafProp.setCalibration(640, 480, Rotation2d.fromDegrees(50));
-            camerafProp.setCalibError(0.25, 0.08);
-            camerafProp.setFPS(20);
-            camerafProp.setAvgLatencyMs(35);
-            camerafProp.setLatencyStdDevMs(5);
-
-            PhotonCameraSim camerafSim = new PhotonCameraSim(cameraf, camerafProp);
-            visionSim.addCamera(camerafSim, robotToCameraf);
-
-            // Low Camera
-            cameralProp = new SimCameraProperties();
-            cameralProp.setCalibration(640, 480, Rotation2d.fromDegrees(50));
-            cameralProp.setCalibError(0.25, 0.08);
-            cameralProp.setFPS(20);
-            cameralProp.setAvgLatencyMs(35);
-            cameralProp.setLatencyStdDevMs(5);
-
-            PhotonCameraSim cameralSim = new PhotonCameraSim(cameral, cameralProp);
-            visionSim.addCamera(cameralSim, robotToCameral);
+            
         }
     }
 
     @Override
     public void simulationPeriodic() {
-        visionSim.update(robotPoseSupplier.get());
+        
     }
 
     @Override
     public void periodic() {
-        // var result = cameraf.getLatestResult();
-        // boolean hasTargets = result.hasTargets();
-        // if (hasTargets) {
-        //     List<PhotonTrackedTarget> targets = result.getTargets();
-        //     for (int i = 0; i < targets.size(); i++) {
-        //         PhotonTrackedTarget target = targets.get(i);
-        //         int targetID = target.getFiducialId();
-        //         double poseAmbiguity = target.getPoseAmbiguity();
-        //         Transform3d bestCameraToTarget = target.getBestCameraToTarget();
-        //         Transform3d alternateCameraToTarget = target.getAlternateCameraToTarget();
+        SmartDashboard.putData(purevision);
+        Optional<EstimatedRobotPose> visionEst = Optional.empty();
+        for (var result : cameraFrontRight.getAllUnreadResults()) {
+            visionEst = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
+            if (visionEst.isEmpty()) {
+                visionEst = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
+            }
+            updateEstimationStdDevs(visionEst, result.getTargets());
 
-        //         SmartDashboard.putString("tag " + targetID, String.valueOf(poseAmbiguity));
-        //         atag_field.getObject(String.valueOf(targetID)).setPose(
-        //             new Pose2d(bestCameraToTarget.getX(), bestCameraToTarget.getY(), bestCameraToTarget.getRotation().toRotation2d())
-        //         );
-        //     }
-        // }
+            // if (Robot.isSimulation()) {
+            //     visionEst.ifPresentOrElse(
+            //             est ->
+            //                     getSimDebugField()
+            //                             .getObject("VisionEstimation")
+            //                             .setPose(est.estimatedPose.toPose2d()),
+            //             () -> {
+            //                 getSimDebugField().getObject("VisionEstimation").setPoses();
+            //             });
+            // }
+
+            visionEst.ifPresent(
+                    est -> {
+                        // Change our trust in the measurement based on the tags we can see
+                        var estStdDevs = getEstimationStdDevs();
+                        purevision.setRobotPose(est.estimatedPose.toPose2d());
+
+                        estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
+                    });
+        }
+    }
+
+    public Matrix<N3, N1> getEstimationStdDevs() {
+        return curStdDevs;
+    }
+
+    private void updateEstimationStdDevs(
+            Optional<EstimatedRobotPose> estimatedPose, List<PhotonTrackedTarget> targets) {
+        if (estimatedPose.isEmpty()) {
+            // No pose input. Default to single-tag std devs
+            curStdDevs = kSingleTagStdDevs;
+
+        } else {
+            // Pose present. Start running Heuristic
+            var estStdDevs = kSingleTagStdDevs;
+            int numTags = 0;
+            double avgDist = 0;
+
+            // Precalculation - see how many tags we found, and calculate an average-distance metric
+            for (var tgt : targets) {
+                var tagPose = photonEstimatorFrontRight.getFieldTags().getTagPose(tgt.getFiducialId());
+                if (tagPose.isEmpty()) continue;
+                numTags++;
+                avgDist +=
+                        tagPose
+                                .get()
+                                .toPose2d()
+                                .getTranslation()
+                                .getDistance(estimatedPose.get().estimatedPose.toPose2d().getTranslation());
+            }
+
+            if (numTags == 0) {
+                // No tags visible. Default to single-tag std devs
+                curStdDevs = kSingleTagStdDevs;
+            } else {
+                // One or more tags visible, run the full heuristic.
+                avgDist /= numTags;
+                // Decrease std devs if multiple targets are visible
+                if (numTags > 1) estStdDevs = kMultiTagStdDevs;
+                // Increase std devs based on (average) distance
+                if (numTags == 1 && avgDist > 4)
+                    estStdDevs = VecBuilder.fill(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE);
+                else estStdDevs = estStdDevs.times(1 + (avgDist * avgDist / 30));
+                curStdDevs = estStdDevs;
+            }
+        }
     }
 }
