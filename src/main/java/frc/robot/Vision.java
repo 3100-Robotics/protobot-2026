@@ -22,6 +22,7 @@ import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
@@ -32,6 +33,7 @@ import edu.wpi.first.networktables.DoubleArrayPublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StringPublisher;
+import edu.wpi.first.networktables.StructPublisher;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -42,6 +44,8 @@ public class Vision extends SubsystemBase {
     public static final Matrix<N3, N1> kMultiTagStdDevs = VecBuilder.fill(0.5, 0.5, 1);
 
     public Field2d purevision = new Field2d();
+    public StructPublisher<Pose3d> publish3d0 = NetworkTableInstance.getDefault()
+        .getStructTopic("03d", Pose3d.struct).publish();
 
     private Matrix<N3, N1> curStdDevs;
     private final EstimateConsumer estConsumer;
@@ -53,7 +57,7 @@ public class Vision extends SubsystemBase {
 
 
 
-    private AprilTagFieldLayout tagLayout;
+    private AprilTagFieldLayout tagLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
 
     public static final Transform3d robotToFrontRightCam =
         new Transform3d(
@@ -63,21 +67,24 @@ public class Vision extends SubsystemBase {
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
             new Rotation3d(0, Math.toRadians(-60), Math.toRadians(-65))
-            //new Rotation3d(0, Math.toRadians(0), Math.toRadians(5))
+        );
+
+    public static final Transform3d robotToFrontLeft =
+        new Transform3d(
+            new Translation3d(
+                Inches.of(12.040283+-0.673182).in(Meters), 
+                Inches.of(-10.040908-0.807295).in(Meters),
+                Inches.of(6.805750+2.396424).in(Meters)
+            ),
+            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(65))
         );
 
     public PhotonPoseEstimator photonEstimatorFrontRight;
+    public PhotonPoseEstimator photonEstimatorFrontLeft;
     public PhotonCamera cameraFrontRight = new PhotonCamera("Right");
+    public PhotonCamera cameraFrontLeft = new PhotonCamera("Left");
 
     public Vision(boolean is_simulation, EstimateConsumer estConsumer) {
-        try {
-            tagLayout = new AprilTagFieldLayout("/home/lvuser/deploy/2026-rebuilt-welded.json");
-            System.out.println(tagLayout);
-            System.out.println(Filesystem.getDeployDirectory().toPath().toString()+"/2026-rebuilt-welded.json");
-            System.out.println(Filesystem.getDeployDirectory().toPath().toString());
-        } catch (IOException e) {
-            System.out.println(e);
-        }
         photonEstimatorFrontRight = new PhotonPoseEstimator(
             tagLayout,
             robotToFrontRightCam);
@@ -96,13 +103,13 @@ public class Vision extends SubsystemBase {
     @Override
     public void periodic() {
         SmartDashboard.putData(purevision);
-        Optional<EstimatedRobotPose> visionEst = Optional.empty();
+        Optional<EstimatedRobotPose> visionEstLeft = Optional.empty();
         for (var result : cameraFrontRight.getAllUnreadResults()) {
-            visionEst = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
-            if (visionEst.isEmpty()) {
-                visionEst = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
+            visionEstLeft = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
+            if (visionEstLeft.isEmpty()) {
+                visionEstLeft = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
             }
-            updateEstimationStdDevs(visionEst, result.getTargets());
+            updateEstimationStdDevs(visionEstLeft, result.getTargets());
 
             // if (Robot.isSimulation()) {
             //     visionEst.ifPresentOrElse(
@@ -115,12 +122,44 @@ public class Vision extends SubsystemBase {
             //             });
             // }
 
-            visionEst.ifPresent(
+            visionEstLeft.ifPresent(
                     est -> {
                         // Change our trust in the measurement based on the tags we can see
                         var estStdDevs = getEstimationStdDevs();
                         purevision.setRobotPose(est.estimatedPose.toPose2d());
+                        
+                        estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
+                    });
+        }
 
+
+        // Right Camera
+        Optional<EstimatedRobotPose> visionEstRight = Optional.empty();
+        for (var result : cameraFrontLeft.getAllUnreadResults()) {
+            visionEstRight = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
+            if (visionEstRight.isEmpty()) {
+                visionEstRight = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
+            }
+            updateEstimationStdDevs(visionEstRight, result.getTargets());
+
+            // if (Robot.isSimulation()) {
+            //     visionEst.ifPresentOrElse(
+            //             est ->
+            //                     getSimDebugField()
+            //                             .getObject("VisionEstimation")
+            //                             .setPose(est.estimatedPose.toPose2d()),
+            //             () -> {
+            //                 getSimDebugField().getObject("VisionEstimation").setPoses();
+            //             });
+            // }
+
+            visionEstRight.ifPresent(
+                    est -> {
+                        // Change our trust in the measurement based on the tags we can see
+                        var estStdDevs = getEstimationStdDevs();
+                        purevision.getObject("RightCamera").setPose(est.estimatedPose.toPose2d());
+                        publish3d0.set(est.estimatedPose);
+                        
                         estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
                     });
         }
