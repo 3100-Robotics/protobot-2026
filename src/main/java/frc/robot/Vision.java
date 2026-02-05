@@ -73,10 +73,10 @@ public class Vision extends SubsystemBase {
         new Transform3d(
             new Translation3d(
                 Inches.of(12.040283+-0.673182).in(Meters), 
-                Inches.of(-10.040908-0.807295).in(Meters),
+                Inches.of(10.040908-0.807295).in(Meters),
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
-            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(65))
+            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(-25))
         );
 
     public PhotonPoseEstimator photonEstimatorFrontRight;
