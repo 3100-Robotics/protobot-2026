@@ -48,7 +48,7 @@ public class RobotContainer {
         if (RobotBase.isSimulation()) {
             DriverStation.silenceJoystickConnectionWarning(true);
         }
-        vision = new Vision(RobotBase.isSimulation(), drivetrain::addVisionMeasurement);
+        vision = new Vision(RobotBase.isSimulation(), drivetrain::addVisionMeasurement, () -> drivetrain.getState().Pose);
         configureBindings();
     }
 

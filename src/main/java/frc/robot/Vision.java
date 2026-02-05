@@ -46,6 +46,8 @@ public class Vision extends SubsystemBase {
     public Field2d purevision = new Field2d();
     public StructPublisher<Pose3d> publish3d0 = NetworkTableInstance.getDefault()
         .getStructTopic("03d", Pose3d.struct).publish();
+    public StructPublisher<Pose3d> leftcam3d = NetworkTableInstance.getDefault()
+        .getStructTopic("lcam3d", Pose3d.struct).publish();
 
     private Matrix<N3, N1> curStdDevs;
     private final EstimateConsumer estConsumer;
@@ -59,24 +61,26 @@ public class Vision extends SubsystemBase {
 
     private AprilTagFieldLayout tagLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
 
-    public static final Transform3d robotToFrontRightCam =
+    public static final Transform3d robotToFrontRight =
         new Transform3d(
             new Translation3d(
                 Inches.of(12.040283+-0.673182).in(Meters), 
                 Inches.of(-10.040908+0.807295).in(Meters),
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
-            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(-65))
+            new Rotation3d(0, Math.toRadians(-30), Math.toRadians(0))
+                .rotateBy(new Rotation3d(0,Math.toRadians(0),Math.toRadians(-60)))
         );
 
     public static final Transform3d robotToFrontLeft =
         new Transform3d(
             new Translation3d(
                 Inches.of(12.040283+-0.673182).in(Meters), 
-                Inches.of(-10.040908-0.807295).in(Meters),
+                Inches.of(10.040908-0.807295).in(Meters),
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
-            new Rotation3d(0, Math.toRadians(-60), Math.toRadians(65))
+            new Rotation3d(0, Math.toRadians(-30), Math.toRadians(0))
+                .rotateBy(new Rotation3d(0,Math.toRadians(0),Math.toRadians(60)))
         );
 
     public PhotonPoseEstimator photonEstimatorFrontRight;
@@ -84,85 +88,119 @@ public class Vision extends SubsystemBase {
     public PhotonCamera cameraFrontRight = new PhotonCamera("Right");
     public PhotonCamera cameraFrontLeft = new PhotonCamera("Left");
 
-    public Vision(boolean is_simulation, EstimateConsumer estConsumer) {
+    public Supplier<Pose2d> robotPoseFromDrivetrain;
+
+    // Simulation
+    public VisionSystemSim visionSim;
+
+    public PhotonCameraSim cameraSimFrontRight;
+    public PhotonCameraSim cameraSimFrontLeft;
+
+    public Vision(boolean is_simulation, EstimateConsumer estConsumer, Supplier<Pose2d> robotPoseFromDrivetrain) {
+        this.robotPoseFromDrivetrain = robotPoseFromDrivetrain;
         photonEstimatorFrontRight = new PhotonPoseEstimator(
             tagLayout,
-            robotToFrontRightCam);
+            robotToFrontRight);
+
+        photonEstimatorFrontLeft = new PhotonPoseEstimator(
+            tagLayout,
+            robotToFrontLeft);
 
         this.estConsumer = estConsumer;
         if (is_simulation) {
-            
+            // A vision system sim labelled as "main" in NetworkTables
+            visionSim = new VisionSystemSim("main");
+            visionSim.addAprilTags(tagLayout);
+
+            SimCameraProperties cameraPropFrontRight = new SimCameraProperties();
+            SimCameraProperties cameraPropFrontLeft = new SimCameraProperties();
+
+            cameraPropFrontRight.setCalibration(1280, 720, Rotation2d.fromDegrees(72));
+            cameraPropFrontRight.setCalibError(0.25, 0.08);
+            cameraPropFrontRight.setFPS(20);
+            cameraPropFrontRight.setAvgLatencyMs(35);
+            cameraPropFrontRight.setLatencyStdDevMs(5);
+
+            cameraPropFrontLeft.setCalibration(1280, 720, Rotation2d.fromDegrees(72));
+            cameraPropFrontLeft.setCalibError(0.25, 0.08);
+            cameraPropFrontLeft.setFPS(20);
+            cameraPropFrontLeft.setAvgLatencyMs(35);
+            cameraPropFrontLeft.setLatencyStdDevMs(5);
+
+            cameraSimFrontRight = new PhotonCameraSim(cameraFrontRight, cameraPropFrontRight);
+            cameraSimFrontLeft = new PhotonCameraSim(cameraFrontLeft, cameraPropFrontLeft);
+
+            visionSim.addCamera(cameraSimFrontRight, robotToFrontRight);
+            visionSim.addCamera(cameraSimFrontLeft, robotToFrontLeft);
         }
     }
 
     @Override
     public void simulationPeriodic() {
-        
+        visionSim.update(robotPoseFromDrivetrain.get());
     }
 
     @Override
     public void periodic() {
         SmartDashboard.putData(purevision);
+        leftcam3d.set(new Pose3d(robotToFrontLeft.getTranslation(), robotToFrontLeft.getRotation()));
         Optional<EstimatedRobotPose> visionEstLeft = Optional.empty();
-        for (var result : cameraFrontRight.getAllUnreadResults()) {
-            visionEstLeft = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
+        for (var result : cameraFrontLeft.getAllUnreadResults()) {
+            visionEstLeft = photonEstimatorFrontLeft.estimateCoprocMultiTagPose(result);
             if (visionEstLeft.isEmpty()) {
-                visionEstLeft = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
+                visionEstLeft = photonEstimatorFrontLeft.estimateLowestAmbiguityPose(result);
             }
             updateEstimationStdDevs(visionEstLeft, result.getTargets());
 
-            // if (Robot.isSimulation()) {
-            //     visionEst.ifPresentOrElse(
-            //             est ->
-            //                     getSimDebugField()
-            //                             .getObject("VisionEstimation")
-            //                             .setPose(est.estimatedPose.toPose2d()),
-            //             () -> {
-            //                 getSimDebugField().getObject("VisionEstimation").setPoses();
-            //             });
-            // }
+            if (Robot.isSimulation()) {
+                visionEstLeft.ifPresentOrElse(
+                        est ->
+                                getSimDebugField()
+                                        .getObject("VisionEstimation")
+                                        .setPose(est.estimatedPose.toPose2d()),
+                        () -> {
+                            getSimDebugField().getObject("VisionEstimation").setPoses();
+                        });
+            }
 
             visionEstLeft.ifPresent(
                     est -> {
-                        // Change our trust in the measurement based on the tags we can see
                         var estStdDevs = getEstimationStdDevs();
                         purevision.setRobotPose(est.estimatedPose.toPose2d());
-                        
                         estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
                     });
         }
 
 
         // Right Camera
-        Optional<EstimatedRobotPose> visionEstRight = Optional.empty();
-        for (var result : cameraFrontLeft.getAllUnreadResults()) {
-            visionEstRight = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
-            if (visionEstRight.isEmpty()) {
-                visionEstRight = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
-            }
-            updateEstimationStdDevs(visionEstRight, result.getTargets());
+        // Optional<EstimatedRobotPose> visionEstRight = Optional.empty();
+        // for (var result : cameraFrontRight.getAllUnreadResults()) {
+        //     visionEstRight = photonEstimatorFrontRight.estimateCoprocMultiTagPose(result);
+        //     if (visionEstRight.isEmpty()) {
+        //         visionEstRight = photonEstimatorFrontRight.estimateLowestAmbiguityPose(result);
+        //     }
+        //     updateEstimationStdDevs(visionEstRight, result.getTargets());
 
-            // if (Robot.isSimulation()) {
-            //     visionEst.ifPresentOrElse(
-            //             est ->
-            //                     getSimDebugField()
-            //                             .getObject("VisionEstimation")
-            //                             .setPose(est.estimatedPose.toPose2d()),
-            //             () -> {
-            //                 getSimDebugField().getObject("VisionEstimation").setPoses();
-            //             });
-            // }
+        //     if (Robot.isSimulation()) {
+        //         visionEstRight.ifPresentOrElse(
+        //                 est ->
+        //                         getSimDebugField()
+        //                                 .getObject("VisionEstimation")
+        //                                 .setPose(est.estimatedPose.toPose2d()),
+        //                 () -> {
+        //                     getSimDebugField().getObject("VisionEstimation").setPoses();
+        //                 });
+        //     }
 
-            visionEstRight.ifPresent(
-                    est -> {
-                        // Change our trust in the measurement based on the tags we can see
-                        var estStdDevs = getEstimationStdDevs();
-                        purevision.getObject("RightCamera").setPose(est.estimatedPose.toPose2d());
-                        publish3d0.set(est.estimatedPose);
-                        
-                        estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
-                    });
-        }
+        //     visionEstRight.ifPresent(
+        //             est -> {
+        //                 // Change our trust in the measurement based on the tags we can see
+        //                 var estStdDevs = getEstimationStdDevs();
+        //                 purevision.getObject("RightCamera").setPose(est.estimatedPose.toPose2d());
+        //                 publish3d0.set(est.estimatedPose);
+        //                 estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
+        //             });
+        // }
     }
 
     public Matrix<N3, N1> getEstimationStdDevs() {
@@ -209,5 +247,16 @@ public class Vision extends SubsystemBase {
                 curStdDevs = estStdDevs;
             }
         }
+    }
+
+    /** Reset pose history of the robot in the vision system simulation. */
+    public void resetSimPose(Pose2d pose) {
+        if (Robot.isSimulation()) visionSim.resetRobotPose(pose);
+    }
+
+    /** A Field2d for visualizing our robot and objects on the field. */
+    public Field2d getSimDebugField() {
+        if (!Robot.isSimulation()) return null;
+        return visionSim.getDebugField();
     }
 }
