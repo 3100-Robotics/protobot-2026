@@ -68,7 +68,7 @@ public class Vision extends SubsystemBase {
                 Inches.of(-10.040908+0.807295).in(Meters),
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
-            new Rotation3d(0, Math.toRadians(-30), Math.toRadians(0))
+            new Rotation3d(0, Math.toRadians(-61.875), Math.toRadians(0))
                 .rotateBy(new Rotation3d(0,Math.toRadians(0),Math.toRadians(-60)))
         );
 
@@ -79,8 +79,8 @@ public class Vision extends SubsystemBase {
                 Inches.of(10.040908-0.807295).in(Meters),
                 Inches.of(6.805750+2.396424).in(Meters)
             ),
-            new Rotation3d(0, Math.toRadians(-30), Math.toRadians(0))
-                .rotateBy(new Rotation3d(0,Math.toRadians(0),Math.toRadians(60)))
+            new Rotation3d(0, Math.toRadians(-61.875), Math.toRadians(0))
+                .rotateBy(new Rotation3d(0,Math.toRadians(0),Math.toRadians(30)))
         );
 
     public PhotonPoseEstimator photonEstimatorFrontRight;
