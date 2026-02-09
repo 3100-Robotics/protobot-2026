@@ -96,7 +96,10 @@ public class Vision extends SubsystemBase {
     public PhotonCameraSim cameraSimFrontRight;
     public PhotonCameraSim cameraSimFrontLeft;
 
-    public Vision(boolean is_simulation, EstimateConsumer estConsumer, Supplier<Pose2d> robotPoseFromDrivetrain) {
+    private RobotContainer rcontainer;
+
+    public Vision(boolean is_simulation, EstimateConsumer estConsumer, Supplier<Pose2d> robotPoseFromDrivetrain, RobotContainer rcontainer) {
+        this.rcontainer = rcontainer;
         this.robotPoseFromDrivetrain = robotPoseFromDrivetrain;
         photonEstimatorFrontRight = new PhotonPoseEstimator(
             tagLayout,
@@ -167,6 +170,7 @@ public class Vision extends SubsystemBase {
                     est -> {
                         var estStdDevs = getEstimationStdDevs();
                         purevision.setRobotPose(est.estimatedPose.toPose2d());
+                        rcontainer.latestVisionLeft = est.estimatedPose.toPose2d();
                         estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
                     });
         }

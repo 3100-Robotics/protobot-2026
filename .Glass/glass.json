@@ -2,9 +2,6 @@
   "NetworkTables": {
     "transitory": {
       "SmartDashboard": {
-        "Field": {
-          "open": true
-        },
         "open": true
       }
     },
@@ -16,7 +13,8 @@
       "/SmartDashboard/Module 1": "Mechanism2d",
       "/SmartDashboard/Module 2": "Mechanism2d",
       "/SmartDashboard/Module 3": "Mechanism2d",
-      "/SmartDashboard/PhotonAlerts": "Alerts"
+      "/SmartDashboard/PhotonAlerts": "Alerts",
+      "/SmartDashboard/betterField": "Field2d"
     },
     "windows": {
       "/Pose": {
@@ -25,16 +23,24 @@
         "left": 245,
         "right": 3942,
         "top": 118,
-        "width": 16.54119300842285,
-        "window": {
-          "visible": true
-        }
+        "width": 16.54119300842285
       },
       "/SmartDashboard/Field": {
         "bottom": 1914,
         "builtin": "",
         "height": 8.069275856018066,
         "image": "C:\\Users\\team3100\\Downloads\\2026-field.png",
+        "left": 245,
+        "right": 3942,
+        "top": 118,
+        "width": 16.54119300842285,
+        "window": {
+          "visible": true
+        }
+      },
+      "/SmartDashboard/betterField": {
+        "bottom": 1914,
+        "height": 8.069275856018066,
         "left": 245,
         "right": 3942,
         "top": 118,
