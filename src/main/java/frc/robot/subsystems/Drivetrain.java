@@ -30,6 +30,7 @@ import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.generated.TunerConstantsV2.TunerSwerveDrivetrain;
+import frc.robot.math.AngleUtils;
 
 /**
  * Class that extends the Phoenix 6 SwerveDrivetrain class and implements
@@ -39,9 +40,6 @@ import frc.robot.generated.TunerConstantsV2.TunerSwerveDrivetrain;
  * https://v6.docs.ctr-electronics.com/en/stable/docs/tuner/tuner-swerve/index.html
  */
 public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
-    public Field2d fieldpub = new Field2d();
-
-
     private static final double kSimLoopPeriod = 0.004; // 4 ms
     private Notifier m_simNotifier = null;
     private double m_lastSimTime;
@@ -56,6 +54,7 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
     private final PIDController xController = new PIDController(5.0, 0.0, 0.0);
     private final PIDController yController = new PIDController(5.0, 0.0, 0.0);
     private final PIDController headingController = new PIDController(2, 0.0, 0.0);
+    private Pose2d poseSetpoint = new Pose2d();
 
     /* Swerve requests to apply during SysId characterization */
     private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
@@ -234,8 +233,6 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
 
     @Override
     public void periodic() {
-        fieldpub.setRobotPose(getPos());
-        SmartDashboard.putData("betterField", fieldpub);
         /*
          * Periodically try to apply the operator perspective.
          * If we haven't applied the operator perspective before, then we should apply it regardless of DS state.
@@ -336,5 +333,37 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
         // Apply the generated speeds
 
         setControl(new SwerveRequest.ApplyFieldSpeeds().withSpeeds(speeds));
+    }
+
+    public boolean isAtPoseSetpoint() {
+        Pose2d relativepose = poseSetpoint.relativeTo(getPos());
+
+        return Math.abs(relativepose.getX()) < 0.01 && 
+                Math.abs(relativepose.getY()) < 0.01 &&
+                AngleUtils.is_between(
+                    getPos().getRotation().getDegrees(),
+                    poseSetpoint.getRotation().getDegrees()+5,
+                    poseSetpoint.getRotation().getDegrees()-5
+                );
+    }
+
+    public void goToPose(Pose2d newPose) {
+        poseSetpoint = newPose;
+        // Get the current pose of the robot
+        Pose2d pose = getPos();
+
+        // Generate the next speeds for the robot
+        ChassisSpeeds speeds = new ChassisSpeeds(
+            xController.calculate(pose.getX(), newPose.getX()),
+            yController.calculate(pose.getY(), newPose.getX()),
+            headingController.calculate(pose.getRotation().getRadians(), newPose.getRotation().getRadians())
+        );
+
+        // Apply the generated speeds
+        setControl(new SwerveRequest.ApplyFieldSpeeds().withSpeeds(speeds));
+    }
+
+    public Command goToPoseCommand(Pose2d newPose) {
+        return run(() -> goToPose(newPose)).until(this::isAtPoseSetpoint);
     }
 }
