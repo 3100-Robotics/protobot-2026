@@ -13,9 +13,6 @@ import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import frc.robot.subsystems.Drivetrain;
 
 public class Auto {
-    private final Pose2d hubPose = new Pose2d(4.628518104553223, 4.035704612731934, new Rotation2d());
-
-    
     private AutoFactory autoFactory;
     private AutoChooser autoChooser = new AutoChooser();
 
@@ -45,10 +42,28 @@ public class Auto {
     }
 
     public AutoRoutine bump() {
-        var routine = autoFactory.newRoutine("Bestie");
+        var routine = autoFactory.newRoutine("Bump");
         routine.active()
             .onTrue(
-                drivetrain.goToPoseCommand(new Pose2d()).withName("stage 0")
+                Commands.sequence(
+                    Commands.runOnce(() -> drivetrain.resetPose(new Pose2d(
+                            3.646700620651245,
+                            3.016883373260498, Rotation2d.fromDegrees(90))
+                        )
+                    ),
+                    drivetrain.goToPoseCommand(() -> new Pose2d(
+                        3.646700620651245,
+                        3.016883373260498, Rotation2d.fromDegrees(90))
+                    ),
+                    Commands.runOnce(() -> SmartDashboard.putString("autostage", "stage 0")),
+                    Commands.waitSeconds(2),
+                    Commands.runOnce(() -> SmartDashboard.putString("autostage", "done waitng")),
+                    drivetrain.goToPoseCommand(() -> new Pose2d(
+                        2.059431552886963,
+                        2.451367139816284, Rotation2d.fromDegrees(90))
+                    ),
+                    drivetrain.pointAtPose(Constants.hubPose)
+                )
             );
         return routine;
     }

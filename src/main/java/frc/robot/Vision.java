@@ -164,15 +164,15 @@ public class Vision extends SubsystemBase {
                         () -> {
                             getSimDebugField().getObject("VisionEstimation").setPoses();
                         });
+            } else {
+                visionEstLeft.ifPresent(
+                        est -> {
+                            var estStdDevs = getEstimationStdDevs();
+                            purevision.setRobotPose(est.estimatedPose.toPose2d());
+                            rcontainer.latestVisionLeft = est.estimatedPose.toPose2d();
+                            estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
+                        });
             }
-
-            visionEstLeft.ifPresent(
-                    est -> {
-                        var estStdDevs = getEstimationStdDevs();
-                        purevision.setRobotPose(est.estimatedPose.toPose2d());
-                        rcontainer.latestVisionLeft = est.estimatedPose.toPose2d();
-                        estConsumer.accept(est.estimatedPose.toPose2d(), est.timestampSeconds, estStdDevs);
-                    });
         }
 
 

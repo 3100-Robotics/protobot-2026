@@ -26,6 +26,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.Notifier;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
@@ -54,7 +55,7 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
     private final PIDController xController = new PIDController(5.0, 0.0, 0.0);
     private final PIDController yController = new PIDController(5.0, 0.0, 0.0);
     private final PIDController headingController = new PIDController(2, 0.0, 0.0);
-    private Pose2d poseSetpoint = new Pose2d();
+    private Supplier<Pose2d> poseSetpoint = () -> new Pose2d();
 
     /* Swerve requests to apply during SysId characterization */
     private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
@@ -336,34 +337,61 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
     }
 
     public boolean isAtPoseSetpoint() {
-        Pose2d relativepose = poseSetpoint.relativeTo(getPos());
-
-        return Math.abs(relativepose.getX()) < 0.01 && 
-                Math.abs(relativepose.getY()) < 0.01 &&
+        Pose2d relativepose = poseSetpoint.get().relativeTo(getPos());
+        boolean isAtPose = 
+                Math.abs(relativepose.getX()) < 0.09 && 
+                Math.abs(relativepose.getY()) < 0.09 &&
                 AngleUtils.is_between(
                     getPos().getRotation().getDegrees(),
-                    poseSetpoint.getRotation().getDegrees()+5,
-                    poseSetpoint.getRotation().getDegrees()-5
+                    poseSetpoint.get().getRotation().getDegrees()+5,
+                    poseSetpoint.get().getRotation().getDegrees()-5
                 );
+        return isAtPose;
     }
 
-    public void goToPose(Pose2d newPose) {
-        poseSetpoint = newPose;
+    public void goToPose() {
         // Get the current pose of the robot
         Pose2d pose = getPos();
 
         // Generate the next speeds for the robot
         ChassisSpeeds speeds = new ChassisSpeeds(
-            xController.calculate(pose.getX(), newPose.getX()),
-            yController.calculate(pose.getY(), newPose.getX()),
-            headingController.calculate(pose.getRotation().getRadians(), newPose.getRotation().getRadians())
+            xController.calculate(pose.getX(), poseSetpoint.get().getX()),
+            yController.calculate(pose.getY(), poseSetpoint.get().getY()),
+            headingController.calculate(pose.getRotation().getRadians(), poseSetpoint.get().getRotation().getRadians())
         );
 
         // Apply the generated speeds
         setControl(new SwerveRequest.ApplyFieldSpeeds().withSpeeds(speeds));
     }
 
-    public Command goToPoseCommand(Pose2d newPose) {
-        return run(() -> goToPose(newPose)).until(this::isAtPoseSetpoint);
+    public Command goToPoseCommand() {
+        return Commands.parallel(
+                run(() -> goToPose())
+                .until(this::isAtPoseSetpoint),
+                Commands.runOnce(() -> SmartDashboard.putString("gotoposestage", "stage 0"))
+            )
+            .andThen(Commands.runOnce(() -> SmartDashboard.putString("gotoposestage", "stage 1")))
+            .andThen(runOnce(() -> setControl(new SwerveRequest.Idle())))
+            ;
+    }
+
+    public Command goToPoseCommand(Supplier<Pose2d> newPose) {
+        return runOnce(() -> poseSetpoint = newPose).andThen(goToPoseCommand());
+    }
+
+    public Command pointAtPose(Pose2d target) {
+        return runOnce(() -> {
+            Pose2d currentPose = getPos();
+            poseSetpoint = () -> new Pose2d(
+                currentPose.getX(),
+                currentPose.getY(),
+                Rotation2d.fromRadians(
+                    Math.atan2(
+                        target.getY()-currentPose.getY(),
+                        target.getX()-currentPose.getX()
+                    )
+                )
+            );
+        }).andThen(goToPoseCommand());
     }
 }
