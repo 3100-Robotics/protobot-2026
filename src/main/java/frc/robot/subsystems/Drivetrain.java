@@ -339,13 +339,19 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
     public boolean isAtPoseSetpoint() {
         Pose2d relativepose = poseSetpoint.get().relativeTo(getPos());
         boolean isAtPose = 
-                Math.abs(relativepose.getX()) < 0.09 && 
-                Math.abs(relativepose.getY()) < 0.09 &&
+                Math.abs(relativepose.getX()) < 0.1 && 
+                Math.abs(relativepose.getY()) < 0.1 &&
                 AngleUtils.is_between(
                     getPos().getRotation().getDegrees(),
                     poseSetpoint.get().getRotation().getDegrees()+5,
                     poseSetpoint.get().getRotation().getDegrees()-5
                 );
+
+        SmartDashboard.putBoolean("within range", AngleUtils.is_between(
+                    getPos().getRotation().getDegrees(),
+                    poseSetpoint.get().getRotation().getDegrees()+10,
+                    poseSetpoint.get().getRotation().getDegrees()-10
+                ));
         return isAtPose;
     }
 
@@ -392,6 +398,6 @@ public class Drivetrain extends TunerSwerveDrivetrain implements Subsystem {
                     )
                 )
             );
-        }).andThen(goToPoseCommand());
+        }).andThen(Commands.runOnce(() -> SmartDashboard.putString("autostage", "pointed at thing setup"))).andThen(goToPoseCommand());
     }
 }

@@ -42,26 +42,42 @@ public class Auto {
     }
 
     public AutoRoutine bump() {
+        Pose2d INIT_POSE = new Pose2d(
+                            3.709699869155884,
+                            1.9885972738265991, Rotation2d.fromDegrees(90));
         var routine = autoFactory.newRoutine("Bump");
         routine.active()
             .onTrue(
                 Commands.sequence(
-                    Commands.runOnce(() -> drivetrain.resetPose(new Pose2d(
-                            3.646700620651245,
-                            3.016883373260498, Rotation2d.fromDegrees(90))
-                        )
-                    ),
-                    drivetrain.goToPoseCommand(() -> new Pose2d(
-                        3.646700620651245,
-                        3.016883373260498, Rotation2d.fromDegrees(90))
-                    ),
+                    Commands.runOnce(() -> drivetrain.resetPose(INIT_POSE)),
+                    drivetrain.goToPoseCommand(() -> INIT_POSE),
                     Commands.runOnce(() -> SmartDashboard.putString("autostage", "stage 0")),
-                    Commands.waitSeconds(2),
+                    // Commands.waitSeconds(2),
                     Commands.runOnce(() -> SmartDashboard.putString("autostage", "done waitng")),
                     drivetrain.goToPoseCommand(() -> new Pose2d(
                         2.059431552886963,
                         2.451367139816284, Rotation2d.fromDegrees(90))
                     ),
+                    drivetrain.pointAtPose(Constants.hubPose),
+                    drivetrain.goToPoseCommand(() -> new Pose2d(
+                        8.683216094970703,
+                        2.8809804916381836,
+                        Rotation2d.fromDegrees(90)
+                    )),
+                    Commands.runOnce(() -> SmartDashboard.putString("autostage", "across field")),
+                    // drivetrain.pointAtPose(Constants.hubPose),
+                    drivetrain.goToPoseCommand(() -> new Pose2d(
+                        8.4885172843933105,
+                        5.456998348236084,
+                        Rotation2d.fromDegrees(90)
+                    )),
+                    // drivetrain.pointAtPose(Constants.hubPose),
+                    drivetrain.goToPoseCommand(() -> new Pose2d(
+                        1.6959257125854492,
+                        5.471975326538086,
+                        new Rotation2d()
+                    )),
+                    drivetrain.pointAtPose(Constants.hubPose),
                     drivetrain.pointAtPose(Constants.hubPose)
                 )
             );
